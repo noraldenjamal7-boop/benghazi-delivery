@@ -6,7 +6,7 @@ workflow_dispatch:
 ​jobs:
 build:
 runs-on: ubuntu-latest
-steps:
+​steps:
 - name: Checkout repository
 uses: actions/checkout@v4
 ​- name: Set up JDK 17
@@ -18,11 +18,9 @@ java-version: '17'
 uses: android-actions/setup-android@v3
 ​- name: Set up Gradle
 uses: gradle/actions/setup-gradle@v4
-with:
-gradle-version: '8.4'
 ​- name: Create Android WebView project
 run: |
-mkdir -p app/src/main/java/com/example/benghaziapp
+mkdir -p app/src/main/java/com/example/benghazidelivery
 mkdir -p app/src/main/res/layout
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/assets
@@ -35,33 +33,35 @@ cat << 'HTML_EOF' > app/src/main/assets/index.html
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>تطبيق التوصيل - بنغازي</title>
+<title>بنغازي للتوصيل</title>
 <style>
 body {
-font-family: system-ui, -apple-system, sans-serif;
-background: #0f172a;
-color: #f8fafc;
+font-family: sans-serif;
+background: #111827;
+color: #f9fafb;
 display: flex;
 align-items: center;
 justify-content: center;
 min-height: 100vh;
 margin: 0;
 text-align: center;
-padding: 16px;
 }
 .card {
-background: #1e293b;
-padding: 24px;
+background: #1f2937;
+padding: 2rem;
 border-radius: 16px;
-max-width: 420px;
-width: 100%;
 box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+max-width: 360px;
+}
+h1 {
+margin-top: 0;
+color: #34d399;
 }
 </style>
 </head>
 <body>
 <div class="card">
-<h1>تطبيق التوصيل - بنغازي</h1>
+<h1>بنغازي للتوصيل</h1>
 <p>تم بناء التطبيق بنجاح عبر GitHub Actions.</p>
 </div>
 </body>
@@ -71,6 +71,10 @@ fi
 ​cat << 'EOF' > settings.gradle
 rootProject.name = "BenghaziDeliveryApp"
 include ':app'
+EOF
+​cat << 'EOF' > gradle.properties
+android.useAndroidX=true
+android.enableJetifier=true
 EOF
 ​cat << 'EOF' > build.gradle
 buildscript {
@@ -82,7 +86,7 @@ dependencies {
 classpath 'com.android.tools.build:gradle:8.2.2'
 }
 }
-allprojects {
+​allprojects {
 repositories {
 google()
 mavenCentral()
@@ -94,10 +98,10 @@ plugins {
 id 'com.android.application'
 }
 ​android {
-namespace "com.example.benghaziapp"
+namespace 'com.example.benghazidelivery'
 compileSdk 34
 ​defaultConfig {
-applicationId "com.example.benghaziapp"
+applicationId "com.example.benghazidelivery"
 minSdk 21
 targetSdk 34
 versionCode 1
@@ -106,54 +110,31 @@ versionName "1.0"
 ​buildTypes {
 release {
 minifyEnabled false
+proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+}
+debug {
+minifyEnabled false
 }
 }
 }
 ​dependencies {
 implementation 'androidx.appcompat:appcompat:1.6.1'
+implementation 'com.google.android.material:material:1.11.0'
+implementation 'androidx.webkit:webkit:1.10.0'
 }
 EOF
-​cat << 'EOF' > app/src/main/res/values/strings.xml
-<resources>
-<string name="app_name">تطبيق التوصيل - بنغازي</string>
-</resources>
-EOF
-​cat << 'EOF' > app/src/main/res/layout/activity_main.xml
-<?xml version="1.0" encoding="utf-8"?>
-<WebView xmlns:android="http://schemas.android.com/apk/res/android"
-android:id="@+id/webview"
-android:layout_width="match_parent"
-android:layout_height="match_parent" />
-EOF
-​cat << 'EOF' > app/src/main/java/com/example/benghaziapp/MainActivity.java
-package com.example.benghaziapp;
-​import android.os.Bundle;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import androidx.appcompat.app.AppCompatActivity;
-​public class MainActivity extends AppCompatActivity {
-@Override
-protected void onCreate(Bundle savedInstanceState) {
-super.onCreate(savedInstanceState);
-setContentView(R.layout.activity_main);
-​WebView webView = findViewById(R.id.webview);
-WebSettings settings = webView.getSettings();
-settings.setJavaScriptEnabled(true);
-settings.setDomStorageEnabled(true);
-settings.setAllowFileAccess(true);
-webView.setWebViewClient(new WebViewClient());
-webView.loadUrl("file:///android_asset/index.html");
-}
-}
+​cat << 'EOF' > app/proguard-rules.pro
+-keep class com.example.benghazidelivery. { *; }
 EOF
 ​cat << 'EOF' > app/src/main/AndroidManifest.xml
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 <uses-permission android:name="android.permission.INTERNET" />
-<application
+​<application
+android:allowBackup="true"
 android:label="@string/app_name"
-android:usesCleartextTraffic="true">
+android:supportsRtl="true"
+android:theme="@style/Theme.AppCompat.Light.NoActionBar">
 <activity
 android:name=".MainActivity"
 android:exported="true">
@@ -165,10 +146,48 @@ android:exported="true">
 </application>
 </manifest>
 EOF
-​- name: Build APK
-run: gradle assembleDebug
+​cat << 'EOF' > app/src/main/res/values/strings.xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+<string name="app_name">Benghazi Delivery</string>
+</resources>
+EOF
+​cat << 'EOF' > app/src/main/res/layout/activity_main.xml
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+android:layout_width="match_parent"
+android:layout_height="match_parent">
+​<WebView
+android:id="@+id/webview"
+android:layout_width="match_parent"
+android:layout_height="match_parent" />
+</FrameLayout>
+EOF
+​cat << 'EOF' > app/src/main/java/com/example/benghazidelivery/MainActivity.java
+package com.example.benghazidelivery;
+​import android.os.Bundle;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import androidx.appcompat.app.AppCompatActivity;
+​public class MainActivity extends AppCompatActivity {
+@Override
+protected void onCreate(Bundle savedInstanceState) {
+super.onCreate(savedInstanceState);
+setContentView(R.layout.activity_main);
+​WebView webView = findViewById(R.id.webview);
+WebSettings webSettings = webView.getSettings();
+webSettings.setJavaScriptEnabled(true);
+webSettings.setDomStorageEnabled(true);
+webView.setWebViewClient(new WebViewClient());
+webView.loadUrl("file:///android_asset/index.html");
+}
+}
+EOF
+​- name: Build Debug APK
+run: gradle assembleDebug --stacktrace
 ​- name: Upload APK artifact
 uses: actions/upload-artifact@v4
 with:
-name: benghazi-app-apk
+name: benghazi-delivery-apk
 path: app/build/outputs/apk/debug/app-debug.apk
