@@ -1,0 +1,1739 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>تطبيق نورالدين - بنغازي</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100dvh;
+            overflow: hidden;
+            font-family: 'Cairo', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        /* منع أي عنصر مخفي من حجب اللمس نهائياً */
+        .hidden {
+            display: none !important;
+            pointer-events: none !important;
+        }
+
+        /* استجابة لمس فورية على الهواتف بدون تأخير */
+        button, a, .tier-card, .reason-card, .touch-btn {
+            touch-action: manipulation;
+            cursor: pointer;
+        }
+
+        input, textarea {
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            touch-action: manipulation;
+        }
+
+        /* خريطة فاتحة كلاسيكية نظيفة مع دعم السحب والتكبير باللمس */
+        #map {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            background: #eef2f6;
+            touch-action: none;
+            pointer-events: auto;
+        }
+
+        .leaflet-tile-pane {
+            filter: saturate(1.05) contrast(1.02);
+        }
+
+        .leaflet-control-attribution {
+            display: none !important;
+        }
+
+        /* طبقات الواجهة فوق طبقات Leaflet (التي تصل إلى z-index: 700) */
+        .ui-layer {
+            z-index: 1000 !important;
+        }
+
+        .modal-layer {
+            z-index: 2000 !important;
+        }
+
+        .toast-layer {
+            z-index: 3000 !important;
+        }
+
+        /* نقطة الموقع الحالية الزرقاء النابضة بدون أي فقاعة نصية */
+        .gps-dot-wrap {
+            position: relative;
+            width: 56px;
+            height: 56px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .gps-halo {
+            position: absolute;
+            width: 56px;
+            height: 56px;
+            border-radius: 9999px;
+            background: rgba(37, 99, 235, 0.16);
+            border: 1.5px solid rgba(37, 99, 235, 0.35);
+            animation: gpsPulse 2.2s infinite ease-out;
+        }
+
+        .gps-core {
+            position: relative;
+            width: 16px;
+            height: 16px;
+            border-radius: 9999px;
+            background: #2563eb;
+            border: 3px solid #ffffff;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.55);
+        }
+
+        @keyframes gpsPulse {
+            0% { transform: scale(0.75); opacity: 0.9; }
+            70% { transform: scale(1.25); opacity: 0; }
+            100% { transform: scale(1.25); opacity: 0; }
+        }
+
+        .tier-card.selected {
+            border: 2.5px solid #2563eb;
+            background-color: #eff6ff;
+            transform: scale(1.01);
+            transition: all 0.2s ease;
+        }
+
+        .reason-card.selected {
+            border: 2px solid #dc2626;
+            background-color: #fef2f2;
+            color: #b91c1c;
+            font-weight: 700;
+        }
+
+        .custom-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.14), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+        }
+
+        .toast-message {
+            animation: slideDown 0.25s ease-out forwards;
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="relative w-full overflow-hidden">
+
+    <!-- حاوية الإشعارات والتحذيرات العلوية -->
+    <div id="toastContainer" class="toast-layer fixed top-4 inset-x-0 flex flex-col items-center pointer-events-none px-4"></div>
+
+    <!-- 1. شاشة البداية -->
+    <div id="splashScreen" class="modal-layer fixed inset-0 bg-slate-900 flex flex-col items-center justify-center text-white transition-opacity duration-300">
+        <div class="w-24 h-24 bg-blue-600 rounded-3xl flex items-center justify-center text-4xl shadow-2xl mb-5 animate-bounce">
+            <i class="fa-solid fa-car-side"></i>
+        </div>
+        <h1 class="text-3xl font-black mb-1 tracking-wide">تطبيق نورالدين</h1>
+        <p class="text-slate-400 text-sm mb-7">بنغازي - ليبيا</p>
+        <div class="w-48 h-1.5 bg-slate-800 rounded-full overflow-hidden mb-5">
+            <div id="splashProgress" class="bg-blue-500 h-full w-0 transition-all duration-700"></div>
+        </div>
+        <button type="button" onclick="dismissSplash()" class="text-xs text-slate-400 underline hover:text-white p-3">تخطي</button>
+    </div>
+
+    <!-- 2. شاشة اختيار الدور / الدخول -->
+    <div id="authScreen" class="modal-layer fixed inset-0 bg-white flex flex-col justify-between p-6 hidden">
+        <div class="pt-10 text-center">
+            <div class="w-20 h-20 bg-blue-100 text-blue-600 rounded-3xl mx-auto flex items-center justify-center text-3xl mb-4 font-bold shadow-sm">
+                <i class="fa-solid fa-taxi"></i>
+            </div>
+            <h2 class="text-2xl font-black text-slate-800">تطبيق نورالدين - بنغازي</h2>
+            <p class="text-slate-500 text-sm mt-1">اختر نوع الحساب للمتابعة في بنغازي</p>
+        </div>
+
+        <div class="space-y-4 my-auto max-w-sm mx-auto w-full">
+            <div class="flex gap-2">
+                <div class="bg-slate-100 px-4 py-3 rounded-xl flex items-center gap-2 text-slate-700 font-bold border border-slate-200 text-sm">
+                    <span>🇱🇾 +218</span>
+                </div>
+                <input type="tel" id="phoneNumber" value="923503864" class="flex-1 bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 font-semibold text-slate-800 focus:outline-none focus:border-blue-500" dir="ltr">
+            </div>
+
+            <div class="space-y-3 pt-1">
+                <button type="button" onclick="loginAs('passenger')" class="w-full p-4 rounded-2xl border-2 border-blue-600 bg-blue-50 hover:bg-blue-100 text-blue-800 font-extrabold flex items-center justify-center gap-3 transition-all shadow-sm active:scale-95">
+                    <i class="fa-solid fa-user text-xl"></i>
+                    <span class="text-base">دخول كـ (راكب)</span>
+                </button>
+                <button type="button" onclick="loginAs('driver')" class="w-full p-4 rounded-2xl border-2 border-emerald-600 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold flex items-center justify-center gap-3 transition-all shadow-sm active:scale-95">
+                    <i class="fa-solid fa-car text-xl"></i>
+                    <span class="text-base">دخول كـ (سائق)</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="text-center text-xs text-slate-400 pb-3">
+            تطبيق نورالدين • بنغازي
+        </div>
+    </div>
+
+    <!-- 3. الواجهة الرئيسية -->
+    <div id="mainApp" class="relative w-full h-full flex flex-col justify-between hidden">
+        <!-- الخريطة -->
+        <div id="map"></div>
+
+        <!-- الشريط العلوي (فوق طبقات Leaflet بالكامل) -->
+        <div class="ui-layer relative p-4 flex items-center justify-between pointer-events-none gap-2">
+            <button type="button" onclick="toggleSidebar(true)" class="w-12 h-12 bg-white rounded-2xl custom-shadow flex items-center justify-center text-slate-700 pointer-events-auto hover:bg-slate-50 active:scale-95 shrink-0" aria-label="القائمة">
+                <i class="fa-solid fa-bars text-lg"></i>
+            </button>
+
+            <!-- شريط السائق العلوي (متصل / الأولوية 10/10 / نسبة 13%) -->
+            <div id="driverStatusContainer" class="hidden pointer-events-auto bg-white/95 backdrop-blur-md px-3 py-2 rounded-2xl custom-shadow flex items-center gap-2 border border-slate-100 flex-wrap justify-end">
+                <span class="bg-amber-300 text-slate-900 px-2.5 py-1 rounded-full text-[11px] font-black flex items-center gap-1">
+                    <i class="fa-solid fa-star text-[10px]"></i>
+                    <span id="priorityBadgeText">الأولوية 10/10</span>
+                </span>
+                <span class="bg-purple-100 text-purple-800 px-2.5 py-1 rounded-full text-[11px] font-extrabold">
+                    نسبة 13%
+                </span>
+                <div class="text-right pr-1">
+                    <div id="driverStatusText" class="text-xs font-extrabold text-emerald-600">متصل الآن</div>
+                </div>
+                <button type="button" onclick="toggleDriverOnlineStatus()" id="driverPowerBtn" class="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-sm active:scale-95 transition-all" title="تغيير حالة الاتصال">
+                    <i class="fa-solid fa-power-off"></i>
+                </button>
+            </div>
+
+            <div id="passengerTopBadge" class="pointer-events-auto bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-2xl custom-shadow flex items-center gap-2 border border-slate-100">
+                <i class="fa-solid fa-taxi text-blue-600"></i>
+                <span class="font-extrabold text-slate-800 text-xs sm:text-sm">تطبيق نورالدين - بنغازي</span>
+            </div>
+        </div>
+
+        <!-- الجزء السفلي: الأزرار العائمة العمودية + البطاقة السفلية -->
+        <div class="ui-layer relative p-4 space-y-2.5 pointer-events-none">
+            <!-- أزرار عائمة مرتبة عمودياً فوق البطاقة السفلية -->
+            <div class="flex flex-col items-end gap-2.5">
+                <button type="button" onclick="openChatModal()" class="pointer-events-auto w-12 h-12 bg-white rounded-2xl custom-shadow flex items-center justify-center text-blue-600 hover:bg-slate-50 active:scale-95 transition" title="الدعم والمحادثة">
+                    <i class="fa-solid fa-headset text-lg"></i>
+                </button>
+                <button type="button" onclick="requestUserGPSLocation()" class="pointer-events-auto w-12 h-12 bg-white rounded-2xl custom-shadow flex items-center justify-center text-emerald-600 hover:bg-slate-50 active:scale-95 transition" title="موقعي الحالي GPS">
+                    <i class="fa-solid fa-location-crosshairs text-lg"></i>
+                </button>
+                <button type="button" onclick="focusMapOnActiveTrip()" class="pointer-events-auto w-12 h-12 bg-white rounded-2xl custom-shadow flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-95 transition" title="إعادة توسيط الخريطة">
+                    <i class="fa-solid fa-map-location-dot text-lg"></i>
+                </button>
+            </div>
+
+            <!-- لوحة الراكب السفلية -->
+            <div id="passengerPanel" class="bg-white rounded-3xl custom-shadow p-4 pointer-events-auto space-y-3 max-w-lg mx-auto w-full">
+                <div class="flex items-center gap-3 bg-slate-100 rounded-2xl px-4 py-3 border border-slate-200 focus-within:border-blue-500">
+                    <i class="fa-solid fa-magnifying-glass text-blue-600"></i>
+                    <input
+                        type="text"
+                        id="destinationInput"
+                        placeholder="إلى أين؟ اكتب المنطقة أو الشارع في بنغازي..."
+                        class="bg-transparent w-full focus:outline-none text-slate-800 font-bold text-sm"
+                        oninput="searchBenghaziPlaces(this.value)"
+                        onkeydown="if(event.key==='Enter') openTierSelection()"
+                    >
+                    <button type="button" id="clearSearchBtn" onclick="clearDestinationInput()" class="hidden text-slate-400 hover:text-slate-600 p-1" title="مسح">
+                        <i class="fa-solid fa-circle-xmark"></i>
+                    </button>
+                </div>
+
+                <!-- اختصارات سريعة لمناطق بنغازي -->
+                <div class="flex gap-2 text-xs overflow-x-auto pb-1">
+                    <button type="button" onclick="selectQuickPlace('الفويهات', 32.1100, 20.0700)" class="bg-slate-100 hover:bg-blue-50 hover:text-blue-700 px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 text-slate-700 transition-all border border-slate-200 shrink-0 active:scale-95">
+                        <i class="fa-solid fa-house text-blue-600"></i> الفويهات
+                    </button>
+                    <button type="button" onclick="selectQuickPlace('الهواري', 32.0950, 20.1100)" class="bg-slate-100 hover:bg-blue-50 hover:text-blue-700 px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 text-slate-700 transition-all border border-slate-200 shrink-0 active:scale-95">
+                        <i class="fa-solid fa-location-dot text-emerald-600"></i> الهواري
+                    </button>
+                    <button type="button" onclick="selectQuickPlace('شارع فينيسيا', 32.1090, 20.0750)" class="bg-slate-100 hover:bg-blue-50 hover:text-blue-700 px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 text-slate-700 transition-all border border-slate-200 shrink-0 active:scale-95">
+                        <i class="fa-solid fa-road text-amber-600"></i> شارع فينيسيا
+                    </button>
+                    <button type="button" onclick="selectQuickPlace('الليثي', 32.0950, 20.0850)" class="bg-slate-100 hover:bg-blue-50 hover:text-blue-700 px-3 py-2 rounded-xl font-bold flex items-center gap-1.5 text-slate-700 transition-all border border-slate-200 shrink-0 active:scale-95">
+                        <i class="fa-solid fa-map-pin text-purple-600"></i> الليثي
+                    </button>
+                </div>
+
+                <!-- قائمة نتائج البحث الفورية -->
+                <div id="searchResultsList" class="hidden max-h-40 overflow-y-auto divide-y divide-slate-100 bg-white rounded-2xl border border-slate-200 text-xs"></div>
+
+                <button type="button" onclick="openTierSelection()" id="confirmDestBtn" class="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-extrabold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-lg active:scale-95">
+                    <span>تأكيد الوجهة وحساب السعر</span>
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+            </div>
+
+            <!-- لوحة انتظار السائق -->
+            <div id="driverWaitingPanel" class="hidden bg-white rounded-3xl custom-shadow p-5 pointer-events-auto text-center space-y-3 border-2 border-emerald-500 max-w-lg mx-auto w-full">
+                <div class="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100 text-right">
+                    <div>
+                        <div class="text-xs font-extrabold text-slate-800">الأولوية مفعلة (10/10)</div>
+                        <div class="text-[11px] text-slate-500">عمولة التطبيق المخفضة: 13%</div>
+                    </div>
+                    <span class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-sm font-bold">
+                        <i class="fa-solid fa-check"></i>
+                    </span>
+                </div>
+                <h3 class="font-extrabold text-slate-800 text-base">في انتظار طلبات الرحلات في بنغازي...</h3>
+                <p class="text-xs text-slate-500">تأكد من تفعيل الاتصال لاستقبال الطلبات القريبة من موقعك.</p>
+                <div class="flex gap-2 justify-center pt-1">
+                    <button type="button" onclick="simulateIncomingRequest()" class="bg-emerald-600 text-white text-xs px-4 py-3.5 rounded-xl font-extrabold shadow hover:bg-emerald-700 active:scale-95 flex-1">
+                        محاكاة طلب رحلة جديد
+                    </button>
+                    <button type="button" onclick="boostDriverPriority()" class="bg-amber-300 text-slate-900 text-xs px-4 py-3.5 rounded-xl font-black shadow hover:bg-amber-400 active:scale-95">
+                        تحديث الأولوية
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. نافذة اختيار الفئة والحد الأدنى لفليكس -->
+    <div id="tierModal" class="modal-layer fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-center hidden">
+        <div class="bg-white w-full max-w-lg rounded-t-3xl p-6 space-y-4 max-h-[90dvh] overflow-y-auto shadow-2xl pointer-events-auto">
+            <div class="flex items-center justify-between border-b pb-3">
+                <div class="text-right">
+                    <h3 class="text-lg font-black text-slate-800">اختر فئة الرحلة</h3>
+                    <p id="distancePriceInfo" class="text-xs text-blue-600 font-bold mt-0.5">المسافة: -- كم | الوقت المقدر: -- دقيقة</p>
+                </div>
+                <button type="button" onclick="closeTierModal()" class="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center active:scale-95"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="space-y-2.5">
+                <!-- اقتصادي -->
+                <div onclick="selectTier('اقتصادي', this)" id="tierEco" class="tier-card p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between transition-all">
+                    <div class="flex items-center gap-3">
+                        <div class="w-11 h-11 bg-sky-100 text-sky-700 rounded-xl flex items-center justify-center text-lg font-bold">🚙</div>
+                        <div class="text-right">
+                            <h4 class="font-extrabold text-slate-800 text-sm">اقتصادي</h4>
+                            <p class="text-[11px] text-slate-500">توفير يومي داخل بنغازي</p>
+                        </div>
+                    </div>
+                    <div class="text-left font-black text-slate-800 text-base" id="priceEco">8.00 د.ل</div>
+                </div>
+
+                <!-- عادي -->
+                <div onclick="selectTier('عادي', this)" id="tierEconomy" class="tier-card p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between transition-all">
+                    <div class="flex items-center gap-3">
+                        <div class="w-11 h-11 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700 text-lg font-bold">🚗</div>
+                        <div class="text-right">
+                            <h4 class="font-extrabold text-slate-800 text-sm">عادي</h4>
+                            <p class="text-[11px] text-slate-500">توصيل سريع ومناسب</p>
+                        </div>
+                    </div>
+                    <div class="text-left font-black text-slate-800 text-base" id="priceEconomy">10.00 د.ل</div>
+                </div>
+
+                <!-- فليكس مع حد أدنى قابل للزيادة والنقصان -->
+                <div onclick="selectTier('فليكس', this)" id="tierFlex" class="tier-card p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between transition-all">
+                    <div class="flex items-center gap-3">
+                        <div class="w-11 h-11 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-lg font-bold">🚕</div>
+                        <div class="text-right">
+                            <h4 class="font-extrabold text-slate-800 text-sm">فليكس</h4>
+                            <p id="flexMinLabel" class="text-[11px] text-blue-600 font-bold">الحد الأدنى: 9.00 د.ل</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="event.stopPropagation(); adjustFlexPrice(-1)" class="w-9 h-9 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-black flex items-center justify-center active:scale-90" aria-label="إنقاص السعر">-</button>
+                        <div class="text-center font-black text-slate-800 text-sm min-w-[68px]" id="priceFlex">12.00 د.ل</div>
+                        <button type="button" onclick="event.stopPropagation(); adjustFlexPrice(1)" class="w-9 h-9 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-black flex items-center justify-center active:scale-90" aria-label="زيادة السعر">+</button>
+                    </div>
+                </div>
+
+                <!-- VIP -->
+                <div onclick="selectTier('في آي بي', this)" id="tierVip" class="tier-card p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between transition-all">
+                    <div class="flex items-center gap-3">
+                        <div class="w-11 h-11 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-lg font-bold">👑</div>
+                        <div class="text-right">
+                            <h4 class="font-extrabold text-slate-800 text-sm">VIP</h4>
+                            <p class="text-[11px] text-slate-500">سيارات حديثة وراحة أعلى</p>
+                        </div>
+                    </div>
+                    <div class="text-left font-black text-slate-800 text-base" id="priceVip">18.00 د.ل</div>
+                </div>
+            </div>
+
+            <button type="button" onclick="openPickupConfirmAndSearch()" class="w-full bg-blue-600 text-white py-3.5 rounded-2xl font-extrabold text-base shadow-lg hover:bg-blue-700 active:scale-95 transition-all">
+                تأكيد نقطة الانطلاق وطلب الرحلة
+            </button>
+        </div>
+    </div>
+
+    <!-- 5. نافذة البحث عن كابتن -->
+    <div id="searchingModal" class="modal-layer fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center hidden p-4">
+        <div class="bg-white w-80 rounded-3xl p-6 text-center space-y-4 shadow-2xl pointer-events-auto">
+            <div class="relative w-24 h-24 mx-auto flex items-center justify-center">
+                <div class="absolute inset-0 border-4 border-blue-100 rounded-full animate-ping"></div>
+                <div class="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+                <div class="text-2xl text-blue-600 font-bold"><i class="fa-solid fa-car-side"></i></div>
+            </div>
+            <h3 class="text-base font-extrabold text-slate-800">جاري البحث عن كابتن قريب...</h3>
+            <div id="countdownTimer" class="text-3xl font-black text-blue-600">5</div>
+            <button type="button" onclick="cancelSearching()" class="text-xs text-red-600 font-bold underline p-2">إلغاء البحث</button>
+        </div>
+    </div>
+
+    <!-- 6. نافذة طلب رحلة جديد للسائق -->
+    <div id="driverIncomingModal" class="modal-layer fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl space-y-4 border-2 border-emerald-500 pointer-events-auto">
+            <div class="flex items-center justify-between border-b pb-3">
+                <div class="flex items-center gap-3">
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150" onerror="this.src='https://placehold.co/96x96/2563eb/ffffff?text=ج'" class="w-12 h-12 rounded-full object-cover border-2 border-blue-500" alt="صورة الراكب">
+                    <div class="text-right">
+                        <h4 class="font-extrabold text-slate-800 text-sm">طلب رحلة جديد</h4>
+                        <p class="text-xs text-slate-500">الراكب: جمال بالحسن</p>
+                    </div>
+                </div>
+                <div class="text-left">
+                    <div class="text-sm font-black text-emerald-600" id="incomingPriceTag">12.00 د.ل</div>
+                    <div class="text-[10px] text-slate-400">نقداً</div>
+                </div>
+            </div>
+
+            <div class="bg-slate-50 p-3 rounded-xl text-xs text-slate-700 space-y-1.5 text-right">
+                <div>📍 <b>موقع الراكب:</b> الفويهات، بنغازي</div>
+                <div id="incomingDestText">🏁 <b>الوجهة:</b> شارع فينيسيا</div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <button type="button" onclick="acceptIncomingRide()" class="bg-emerald-600 text-white py-3.5 rounded-2xl font-extrabold text-sm shadow hover:bg-emerald-700 active:scale-95">قبول الطلب</button>
+                <button type="button" onclick="rejectIncomingRide()" class="bg-slate-200 text-slate-700 py-3.5 rounded-2xl font-extrabold text-sm hover:bg-slate-300 active:scale-95">رفض</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. رحلة الراكب النشطة -->
+    <div id="passengerActiveRideModal" class="ui-layer fixed inset-x-0 bottom-0 pointer-events-none flex justify-center hidden">
+        <div class="bg-white/95 backdrop-blur-md w-full max-w-lg rounded-t-3xl px-4 py-3.5 space-y-3 shadow-2xl border-t border-slate-200 pointer-events-auto">
+            <div class="flex items-center justify-between bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                    <span class="text-[11px] font-bold text-emerald-800" id="captainEtaStatus">السيارة تبعد 1.2 كم • تصل خلال 3 دقائق</span>
+                </div>
+                <span class="text-xs font-black text-blue-600" id="passengerPriceDisplay">12.00 د.ل</span>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" onerror="this.src='https://placehold.co/96x96/10b981/ffffff?text=أ'" class="w-11 h-11 rounded-full object-cover border-2 border-blue-600" alt="صورة الكابتن">
+                    <div class="text-right">
+                        <h4 class="font-extrabold text-slate-800 text-xs">أحمد العبيدي <span class="text-amber-500 font-bold">★ 4.9</span></h4>
+                        <p class="text-[11px] text-slate-500">تويوتا كورولا • بيضاء</p>
+                    </div>
+                </div>
+                <div class="bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-center">
+                    <div class="text-xs font-black text-slate-800 tracking-wider">ب ن غ 1234</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-4 gap-2">
+                <button type="button" onclick="openChatModal()" class="bg-slate-100 hover:bg-slate-200 py-3 px-1 rounded-xl flex items-center justify-center gap-1 text-slate-700 text-xs font-bold active:scale-95">
+                    <i class="fa-solid fa-comment-dots text-blue-600"></i>
+                    <span>محادثة</span>
+                </button>
+                <a href="tel:+218920000000" class="bg-slate-100 hover:bg-slate-200 py-3 px-1 rounded-xl flex items-center justify-center gap-1 text-slate-700 text-xs font-bold active:scale-95">
+                    <i class="fa-solid fa-phone text-emerald-600"></i>
+                    <span>اتصال</span>
+                </a>
+                <button type="button" onclick="openPassengerFinishModal()" class="bg-emerald-50 hover:bg-emerald-100 py-3 px-1 rounded-xl flex items-center justify-center gap-1 text-emerald-700 text-xs font-bold border border-emerald-200 active:scale-95">
+                    <i class="fa-solid fa-flag-checkered"></i>
+                    <span>إنهاء</span>
+                </button>
+                <button type="button" onclick="openCancelReasonModal('passenger')" class="bg-red-50 hover:bg-red-100 py-3 px-1 rounded-xl flex items-center justify-center gap-1 text-red-600 text-xs font-bold border border-red-200 active:scale-95">
+                    <i class="fa-solid fa-ban"></i>
+                    <span>إلغاء</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 8. رحلة السائق النشطة على مرحلتين (موقع الراكب -> وجهة الراكب) -->
+    <div id="driverJourneyModal" class="ui-layer fixed inset-x-0 bottom-0 pointer-events-none flex justify-center hidden">
+        <div class="bg-white w-full max-w-lg rounded-t-3xl p-5 space-y-4 shadow-2xl border-t border-slate-200 pointer-events-auto">
+            <div class="flex items-center justify-between border-b pb-3">
+                <div class="flex items-center gap-3">
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150" onerror="this.src='https://placehold.co/96x96/2563eb/ffffff?text=ج'" class="w-12 h-12 rounded-full object-cover border-2 border-blue-600 shadow-sm" alt="صورة الراكب">
+                    <div class="text-right">
+                        <h4 class="font-extrabold text-slate-800 text-sm">جمال بالحسن</h4>
+                        <p class="text-xs text-slate-500 font-bold" dir="ltr">+218 92 350 3864</p>
+                    </div>
+                </div>
+                <div class="text-left bg-slate-50 px-3 py-1.5 rounded-2xl border border-slate-200">
+                    <div class="text-[10px] text-slate-400">سعر الرحلة</div>
+                    <div id="driverJourneyPriceTag" class="text-sm font-black text-emerald-600">12.00 د.ل</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-4 gap-2">
+                <a href="tel:+218923503864" class="bg-emerald-50 hover:bg-emerald-100 py-3 rounded-2xl flex flex-col items-center justify-center gap-1 text-emerald-700 text-xs font-bold border border-emerald-200 active:scale-95">
+                    <i class="fa-solid fa-phone text-base"></i>
+                    <span>اتصال</span>
+                </a>
+                <button type="button" onclick="openChatModal()" class="bg-slate-100 hover:bg-slate-200 py-3 rounded-2xl flex flex-col items-center justify-center gap-1 text-slate-700 text-xs font-bold active:scale-95">
+                    <i class="fa-solid fa-comment-dots text-blue-600 text-base"></i>
+                    <span>محادثة</span>
+                </button>
+                <button type="button" onclick="openGoogleMapsForCurrentStage()" class="bg-blue-600 hover:bg-blue-700 py-3 rounded-2xl flex flex-col items-center justify-center gap-1 text-white text-xs font-bold shadow active:scale-95">
+                    <i class="fa-solid fa-diamond-turn-right text-base"></i>
+                    <span>خرائط</span>
+                </button>
+                <button type="button" onclick="openCancelReasonModal('driver')" class="bg-red-50 hover:bg-red-100 py-3 rounded-2xl flex flex-col items-center justify-center gap-1 text-red-600 text-xs font-bold border border-red-200 active:scale-95">
+                    <i class="fa-solid fa-ban text-base"></i>
+                    <span>إلغاء</span>
+                </button>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div class="space-y-1 text-right">
+                    <div class="text-[11px] font-extrabold text-blue-600" id="driverStageBadge">المرحلة 1 من 2: التوجه لموقع الراكب</div>
+                    <div class="text-sm font-extrabold text-slate-800" id="driverStageLocationText">📍 موقع الراكب: الفويهات، بنغازي</div>
+                    <p class="text-[11px] text-slate-500" id="driverStageHint">اضغط على (خرائط) لفتح موقع الراكب في Google Maps</p>
+                </div>
+                <button type="button" onclick="advanceDriverJourneyStep()" id="driverJourneyActionBtn" class="w-full bg-slate-900 text-white py-3.5 rounded-xl font-extrabold text-sm shadow hover:bg-slate-800 active:scale-95 transition-all">
+                    تم الوصول إلى مكان الراكب
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 9A. نافذة أسباب الإلغاء المخصصة -->
+    <div id="cancelReasonModal" class="modal-layer fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center hidden">
+        <div class="bg-white w-full max-w-lg rounded-t-3xl p-6 space-y-4 shadow-2xl pointer-events-auto">
+            <div class="flex items-center justify-between border-b pb-3">
+                <h3 class="text-base font-extrabold text-slate-800" id="cancelModalTitle">لماذا تريد إلغاء الرحلة؟</h3>
+                <button type="button" onclick="closeCancelReasonModal()" class="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center active:scale-95"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div id="cancelReasonsList" class="space-y-2 text-xs"></div>
+
+            <button type="button" onclick="proceedToCancelConfirm()" class="w-full bg-red-600 text-white py-3.5 rounded-2xl font-extrabold text-sm shadow hover:bg-red-700 active:scale-95">
+                متابعة الإلغاء
+            </button>
+        </div>
+    </div>
+
+    <!-- 9B. نافذة تأكيد الإلغاء الثانية -->
+    <div id="cancelDoubleConfirmModal" class="modal-layer fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden p-4">
+        <div class="bg-white w-80 rounded-3xl p-6 text-center space-y-4 shadow-2xl border-2 border-red-100 pointer-events-auto">
+            <div class="w-14 h-14 bg-red-100 text-red-600 rounded-full mx-auto flex items-center justify-center text-2xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="font-extrabold text-slate-800 text-base">هل أنت متأكد من إلغاء الرحلة؟</h3>
+            <p class="text-xs text-slate-600 leading-relaxed" id="cancelConfirmWarningText">يرجى تأكيد رغبتك في إلغاء الرحلة.</p>
+            <div class="grid grid-cols-2 gap-2.5 pt-1">
+                <button type="button" onclick="executeFinalCancellation()" class="bg-red-600 text-white py-3 rounded-2xl font-extrabold text-xs shadow hover:bg-red-700 active:scale-95">نعم، تأكيد الإلغاء</button>
+                <button type="button" onclick="closeDoubleConfirmModal()" class="bg-slate-100 text-slate-700 py-3 rounded-2xl font-extrabold text-xs hover:bg-slate-200 active:scale-95">تراجع</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 10. نافذة المحادثة والدعم -->
+    <div id="chatModal" class="modal-layer fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-md h-[450px] rounded-3xl flex flex-col shadow-2xl overflow-hidden pointer-events-auto">
+            <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center font-bold">💬</div>
+                    <div class="text-right">
+                        <h4 class="font-bold text-sm">المحادثة والدعم الفني</h4>
+                        <span class="text-[10px] text-emerald-400 font-semibold">متصل الآن • بنغازي</span>
+                    </div>
+                </div>
+                <button type="button" onclick="closeChatModal()" class="text-white hover:text-slate-300 p-2"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50 text-xs">
+                <div class="bg-white p-3 rounded-2xl shadow-sm max-w-[80%] text-slate-800 text-right border border-slate-100">أهلاً بك في تطبيق نورالدين - بنغازي، كيف نقدر نساعدك؟</div>
+            </div>
+            <div class="p-3 bg-white border-t flex gap-2">
+                <input type="text" id="chatInput" onkeydown="if(event.key==='Enter') sendChatMessage()" placeholder="اكتب رسالتك..." class="flex-1 bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-blue-500">
+                <button type="button" onclick="sendChatMessage()" class="bg-blue-600 text-white px-5 rounded-xl font-bold text-xs hover:bg-blue-700 active:scale-95"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 11A. نافذة تقييم الراكب (نجوم + إكرامية) -->
+    <div id="passengerRatingModal" class="modal-layer fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center hidden p-4">
+        <div class="bg-white w-80 rounded-3xl p-6 text-center space-y-4 shadow-2xl pointer-events-auto">
+            <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full mx-auto flex items-center justify-center text-3xl">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <h3 class="font-extrabold text-slate-800 text-lg">تم إنهاء الرحلة بنجاح</h3>
+            <p id="passengerTripSummaryText" class="text-xs text-slate-600 font-bold">المبلغ الإجمالي للكابتن نقداً.</p>
+
+            <div id="passengerStars" class="flex justify-center gap-2 text-2xl text-amber-400 py-1">
+                <i onclick="setStarRating('passengerStars', 1)" class="touch-btn fa-solid fa-star p-1"></i>
+                <i onclick="setStarRating('passengerStars', 2)" class="touch-btn fa-solid fa-star p-1"></i>
+                <i onclick="setStarRating('passengerStars', 3)" class="touch-btn fa-solid fa-star p-1"></i>
+                <i onclick="setStarRating('passengerStars', 4)" class="touch-btn fa-solid fa-star p-1"></i>
+                <i onclick="setStarRating('passengerStars', 5)" class="touch-btn fa-solid fa-star p-1"></i>
+            </div>
+
+            <div class="text-right text-xs text-slate-600 space-y-1.5">
+                <label class="font-bold">إضافة إكرامية للكابتن (اختياري):</label>
+                <div class="grid grid-cols-4 gap-1.5 text-center" id="tipButtonsGroup">
+                    <button type="button" onclick="setTip(0, this)" class="bg-blue-50 border-2 border-blue-600 text-blue-700 py-2 rounded-xl font-bold">0</button>
+                    <button type="button" onclick="setTip(2, this)" class="bg-slate-100 border border-slate-200 py-2 rounded-xl font-bold">2 د.ل</button>
+                    <button type="button" onclick="setTip(5, this)" class="bg-slate-100 border border-slate-200 py-2 rounded-xl font-bold">5 د.ل</button>
+                    <button type="button" onclick="setTip(10, this)" class="bg-slate-100 border border-slate-200 py-2 rounded-xl font-bold">10 د.ل</button>
+                </div>
+            </div>
+
+            <textarea id="passengerTripNote" placeholder="اكتب ملاحظتك للكابتن..." class="w-full bg-slate-100 border border-slate-200 rounded-xl p-3 text-xs focus:outline-none focus:border-blue-500 resize-none h-16"></textarea>
+
+            <button type="button" onclick="submitPassengerRatingAndClose()" class="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-extrabold text-sm shadow hover:bg-slate-800 active:scale-95">
+                إرسال التقييم وإنهاء الرحلة
+            </button>
+        </div>
+    </div>
+
+    <!-- 11B. نافذة تقييم السائق (نجوم وملاحظات فقط بدون إكرامية) -->
+    <div id="driverRatingModal" class="modal-layer fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center hidden p-4">
+        <div class="bg-white w-80 rounded-3xl p-6 text-center space-y-4 shadow-2xl pointer-events-auto">
+            <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full mx-auto flex items-center justify-center text-3xl">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <h3 class="font-extrabold text-slate-800 text-lg">تم إنهاء الرحلة</h3>
+            <p class="text-xs text-slate-500">قيّم الراكب جمال بالحسن</p>
+
+            <div id="driverStars" class="flex justify-center gap-2 text-2xl text-amber-400 py-2">
+                <i onclick="setStarRating('driverStars', 1)" class="touch-btn fa-solid fa-star p-1"></i>
+                <i onclick="setStarRating('driverStars', 2)" class="touch-btn fa-solid fa-star p-1"></i>
+                <i onclick="setStarRating('driverStars', 3)" class="touch-btn fa-solid fa-star p-1"></i>
+                <i onclick="setStarRating('driverStars', 4)" class="touch-btn fa-solid fa-star p-1"></i>
+                <i onclick="setStarRating('driverStars', 5)" class="touch-btn fa-solid fa-star p-1"></i>
+            </div>
+
+            <textarea id="driverTripNote" placeholder="ملاحظاتك حول الراكب (اختياري)..." class="w-full bg-slate-100 border border-slate-200 rounded-xl p-3 text-xs focus:outline-none focus:border-blue-500 resize-none h-16"></textarea>
+
+            <button type="button" onclick="submitDriverRatingAndClose()" class="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-extrabold text-sm shadow hover:bg-slate-800 active:scale-95">
+                حفظ التقييم
+            </button>
+        </div>
+    </div>
+
+    <!-- 12. القائمة الجانبية -->
+    <div id="sidebarOverlay" class="modal-layer fixed inset-0 bg-black/50 backdrop-blur-sm hidden" onclick="toggleSidebar(false)"></div>
+    <div id="sidebar" class="modal-layer fixed top-0 bottom-0 right-0 w-80 bg-white shadow-2xl transform translate-x-full transition-transform duration-300 flex flex-col justify-between p-6">
+        <div class="space-y-6">
+            <div class="flex items-center justify-between border-b pb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center font-black text-lg shadow-sm">ن</div>
+                    <div class="text-right">
+                        <h4 class="font-extrabold text-slate-800 text-base">نورالدين جمال</h4>
+                        <p class="text-xs text-slate-400" dir="ltr">+218 923503864</p>
+                    </div>
+                </div>
+                <button type="button" onclick="toggleSidebar(false)" class="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center active:scale-95"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="space-y-2 text-xs font-bold text-slate-700">
+                <div class="bg-blue-50 text-blue-700 p-3 rounded-xl flex items-center justify-center font-extrabold" id="sidebarRoleBadge">
+                    وضع الراكب الحالي
+                </div>
+                <button type="button" onclick="openWalletModal()" class="w-full bg-slate-50 hover:bg-slate-100 p-3.5 rounded-xl flex items-center justify-between active:scale-98">
+                    <div class="flex items-center gap-3"><i class="fa-solid fa-wallet text-blue-600 text-base"></i><span>محفظة السائق (عمولة 13%)</span></div>
+                    <span id="sidebarWalletBalance" class="font-black text-slate-800">0.00 د.ل</span>
+                </button>
+                <button type="button" onclick="openStatsModal()" class="w-full bg-slate-50 hover:bg-slate-100 p-3.5 rounded-xl flex items-center justify-between active:scale-98">
+                    <div class="flex items-center gap-3"><i class="fa-solid fa-chart-pie text-emerald-600 text-base"></i><span>الإحصائيات وسجل الرحلات</span></div>
+                    <i class="fa-solid fa-chevron-left text-slate-400"></i>
+                </button>
+                <button type="button" onclick="switchAppRole()" class="w-full bg-slate-50 hover:bg-slate-100 p-3.5 rounded-xl flex items-center justify-between active:scale-98">
+                    <div class="flex items-center gap-3"><i class="fa-solid fa-rotate text-amber-600 text-base"></i><span id="switchRoleText">التبديل إلى وضع السائق</span></div>
+                    <i class="fa-solid fa-chevron-left text-slate-400"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="text-center text-[11px] text-slate-400 pt-4 border-t">
+            تطبيق نورالدين - بنغازي
+        </div>
+    </div>
+
+    <!-- 13. نافذة المحفظة -->
+    <div id="walletModal" class="modal-layer fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center hidden p-4">
+        <div class="bg-white w-80 rounded-3xl p-6 space-y-4 shadow-2xl text-center pointer-events-auto">
+            <div class="w-14 h-14 bg-blue-100 text-blue-600 rounded-full mx-auto flex items-center justify-center text-2xl">
+                <i class="fa-solid fa-wallet"></i>
+            </div>
+            <h3 class="font-extrabold text-slate-800 text-base">محفظة السائق (عمولة 13%)</h3>
+            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div class="text-xs text-slate-400">الرصيد الحالي للسائق</div>
+                <div id="walletDisplayAmount" class="text-2xl font-black text-slate-900 mt-1">0.00 د.ل</div>
+            </div>
+            <div class="space-y-2">
+                <input type="text" id="scratchCardInput" placeholder="أدخل رقم كرت الشحن..." class="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-blue-500 text-center">
+                <button type="button" onclick="rechargeWallet()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-extrabold text-xs shadow hover:bg-blue-700 active:scale-95">شحن الرصيد (+20 د.ل)</button>
+            </div>
+            <button type="button" onclick="closeWalletModal()" class="text-xs text-slate-400 underline p-2">إغلاق</button>
+        </div>
+    </div>
+
+    <!-- 14. نافذة الإحصائيات -->
+    <div id="statsModal" class="modal-layer fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center hidden p-4">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl pointer-events-auto">
+            <div class="flex items-center justify-between border-b pb-3">
+                <h3 class="font-extrabold text-slate-800 text-base">إحصائيات وسجل الرحلات</h3>
+                <button type="button" onclick="closeStatsModal()" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center active:scale-95"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="grid grid-cols-2 gap-3 text-center">
+                <div class="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                    <div class="text-xs text-slate-400">إجمالي الرحلات</div>
+                    <div id="statsTotalTrips" class="text-xl font-black text-slate-900 mt-1">14 رحلة</div>
+                </div>
+                <div class="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                    <div class="text-xs text-slate-400">إجمالي المسافة</div>
+                    <div id="statsTotalKm" class="text-xl font-black text-slate-900 mt-1">68 كم</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // اختياري: ضع مفتاح Google Maps JavaScript API هنا لتفعيل خرائط جوجل الرسمية تلقائياً
+        const GOOGLE_MAPS_API_KEY = "";
+
+        const DEFAULT_BENGHAZI_COORDS = [32.098, 20.085];
+
+        let useGoogleMaps = false;
+        let gMap = null;
+        let gUserMarker = null;
+        let gDestMarker = null;
+        let gCaptainMarker = null;
+
+        let map = null;
+        let userMarker = null;
+        let destMarker = null;
+        let captainMarker = null;
+
+        let captainMoveInterval = null;
+        let countdownInterval = null;
+        let splashTimeout = null;
+
+        let userLatLng = [...DEFAULT_BENGHAZI_COORDS];
+        let selectedDestLatLng = [32.1090, 20.0750];
+        let selectedDestName = "شارع فينيسيا";
+
+        let currentRole = 'passenger';
+        let isDriverOnline = true;
+        let priorityPassengersCount = 10;
+
+        let calculatedDistanceKm = 2.5;
+        let tripPrices = { saver: 8.0, economy: 10.0, flex: 12.0, vip: 18.0 };
+        let flexMinPrice = 9.0;
+        let selectedTier = { name: 'فليكس', price: 12.0 };
+
+        let walletBalance = 0.00;
+        let completedTripsCount = 14;
+        let completedDistanceKm = 68;
+        let driverJourneyStep = 1;
+        let selectedTip = 0;
+        let cancellingActor = 'passenger';
+        let selectedCancelReason = '';
+
+        const PASSENGER_CANCEL_REASONS = [
+            "تأخر الكابتن عن الوصول",
+            "الكابتن طلب إلغاء الرحلة",
+            "تغيير الوجهة أو الخطة",
+            "حجزت الرحلة بالخطأ",
+            "الكابتن بعيد جداً عن موقعي"
+        ];
+
+        const DRIVER_CANCEL_REASONS = [
+            "الراكب لم يرد على المكالمات",
+            "موقع الراكب غير دقيق أو صعب الوصول",
+            "ازدحام مروري شديد أو طريق مغلق",
+            "حدث عطل مفاجئ في السيارة",
+            "تأخر الراكب في نقطة الالتقاء"
+        ];
+
+        const BENGHAZI_PLACES = [
+            { name: "الفويهات", lat: 32.1100, lng: 20.0700, type: "منطقة في بنغازي" },
+            { name: "الهواري", lat: 32.0950, lng: 20.1100, type: "منطقة في بنغازي" },
+            { name: "الليثي", lat: 32.0950, lng: 20.0850, type: "منطقة في بنغازي" },
+            { name: "الحدائق", lat: 32.1150, lng: 20.0850, type: "منطقة في بنغازي" },
+            { name: "الكيش", lat: 32.1120, lng: 20.0820, type: "منطقة في بنغازي" },
+            { name: "سيدي حسين", lat: 32.1060, lng: 20.0880, type: "منطقة في بنغازي" },
+            { name: "البركة", lat: 32.1020, lng: 20.0850, type: "منطقة في بنغازي" },
+            { name: "الماجوري", lat: 32.1080, lng: 20.0950, type: "منطقة في بنغازي" },
+            { name: "السلماني", lat: 32.1000, lng: 20.0750, type: "منطقة في بنغازي" },
+            { name: "قاريونس", lat: 32.1350, lng: 20.0600, type: "منطقة في بنغازي" },
+            { name: "القوارشة", lat: 32.0700, lng: 20.1200, type: "منطقة في بنغازي" },
+            { name: "طابلينو", lat: 32.0880, lng: 20.1020, type: "منطقة في بنغازي" },
+            { name: "بلعون", lat: 32.0650, lng: 20.0950, type: "منطقة في بنغازي" },
+            { name: "شارع فينيسيا", lat: 32.1090, lng: 20.0750, type: "شارع في بنغازي" },
+            { name: "شارع المركبات", lat: 32.1030, lng: 20.0820, type: "شارع في بنغازي" },
+            { name: "شارع الوادي", lat: 32.1110, lng: 20.0880, type: "شارع في بنغازي" },
+            { name: "شارع دبي", lat: 32.1170, lng: 20.0790, type: "شارع في بنغازي" },
+            { name: "شارع 20", lat: 32.1050, lng: 20.0900, type: "شارع في بنغازي" },
+            { name: "شارع جمال عبد الناصر", lat: 32.1140, lng: 20.0680, type: "شارع في بنغازي" },
+            { name: "طريق المطار", lat: 32.0800, lng: 20.0900, type: "طريق في بنغازي" },
+            { name: "الطريق الدائري الرابع", lat: 32.1135, lng: 20.0980, type: "طريق في بنغازي" }
+        ];
+
+        function clearAllActiveTimers() {
+            if (captainMoveInterval) {
+                clearInterval(captainMoveInterval);
+                captainMoveInterval = null;
+            }
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+        }
+
+        function removeCaptainMarker() {
+            try {
+                if (!useGoogleMaps && captainMarker && map) {
+                    map.removeLayer(captainMarker);
+                    captainMarker = null;
+                }
+                if (useGoogleMaps && gCaptainMarker) {
+                    gCaptainMarker.setMap(null);
+                    gCaptainMarker = null;
+                }
+            } catch (err) {
+                console.warn(err);
+            }
+        }
+
+        function showToast(message, type = 'success', duration = 3200) {
+            try {
+                const container = document.getElementById('toastContainer');
+                if (!container) return;
+                const toast = document.createElement('div');
+                let bgCol = 'bg-slate-900 text-white';
+                if (type === 'error') bgCol = 'bg-red-600 text-white border-2 border-red-300';
+                if (type === 'warning') bgCol = 'bg-amber-600 text-white border-2 border-amber-200';
+                if (type === 'info') bgCol = 'bg-blue-600 text-white';
+
+                toast.className = `toast-message ${bgCol} px-5 py-3.5 rounded-2xl shadow-2xl text-xs font-extrabold mb-2 flex items-center gap-3 max-w-md text-right leading-relaxed pointer-events-none`;
+                toast.innerHTML = `<i class="fa-solid fa-circle-info text-base shrink-0"></i><span>${escapeHtml(message)}</span>`;
+                container.appendChild(toast);
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    setTimeout(() => {
+                        if (toast.parentNode) toast.remove();
+                    }, 250);
+                }, duration);
+            } catch (err) {
+                console.warn(err);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = String(text || '');
+            return div.innerHTML;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const prog = document.getElementById('splashProgress');
+                if (prog) prog.style.width = '100%';
+            }, 100);
+            splashTimeout = setTimeout(dismissSplash, 900);
+        });
+
+        function dismissSplash() {
+            if (splashTimeout) {
+                clearTimeout(splashTimeout);
+                splashTimeout = null;
+            }
+            const splash = document.getElementById('splashScreen');
+            const auth = document.getElementById('authScreen');
+            if (splash && !splash.classList.contains('hidden')) {
+                splash.style.opacity = '0';
+                setTimeout(() => {
+                    splash.classList.add('hidden');
+                    if (auth) auth.classList.remove('hidden');
+                }, 220);
+            }
+        }
+
+        function loginAs(role) {
+            currentRole = role;
+            const auth = document.getElementById('authScreen');
+            const main = document.getElementById('mainApp');
+            if (auth) auth.classList.add('hidden');
+            if (main) main.classList.remove('hidden');
+            updateRoleUI();
+            setTimeout(() => {
+                initMapSystem();
+                requestUserGPSLocation(true);
+            }, 80);
+        }
+
+        function initMapSystem() {
+            if (GOOGLE_MAPS_API_KEY && GOOGLE_MAPS_API_KEY.trim().length > 10 && !window.googleMapsAttempted) {
+                window.googleMapsAttempted = true;
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY.trim())}&language=ar&region=LY&callback=onGoogleMapsLoaded`;
+                script.async = true;
+                script.defer = true;
+                script.onerror = () => initLeafletFallback();
+                document.head.appendChild(script);
+                setTimeout(() => {
+                    if (!useGoogleMaps && !map) initLeafletFallback();
+                }, 2500);
+            } else {
+                initLeafletFallback();
+            }
+        }
+
+        window.onGoogleMapsLoaded = function () {
+            try {
+                if (!window.google || !window.google.maps) {
+                    initLeafletFallback();
+                    return;
+                }
+                useGoogleMaps = true;
+                const mapEl = document.getElementById('map');
+                if (!mapEl) return;
+                mapEl.innerHTML = '';
+                gMap = new google.maps.Map(mapEl, {
+                    center: { lat: userLatLng[0], lng: userLatLng[1] },
+                    zoom: 15,
+                    disableDefaultUI: true,
+                    gestureHandling: 'greedy'
+                });
+                gUserMarker = new google.maps.Marker({
+                    position: { lat: userLatLng[0], lng: userLatLng[1] },
+                    map: gMap,
+                    draggable: true
+                });
+                gUserMarker.addListener('dragend', (e) => {
+                    if (e && e.latLng) {
+                        userLatLng = [e.latLng.lat(), e.latLng.lng()];
+                        recalculateCompetitivePrices();
+                    }
+                });
+            } catch (_) {
+                initLeafletFallback();
+            }
+        };
+
+        function initLeafletFallback() {
+            if (map || useGoogleMaps) return;
+            try {
+                if (typeof L === 'undefined') return;
+                map = L.map('map', {
+                    zoomControl: false,
+                    tap: true,
+                    touchZoom: true,
+                    dragging: true
+                }).setView(userLatLng, 15);
+
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19
+                }).addTo(map);
+
+                const dotIcon = L.divIcon({
+                    className: 'custom-gps-dot',
+                    html: '<div class="gps-dot-wrap"><div class="gps-halo"></div><div class="gps-core"></div></div>',
+                    iconSize: [56, 56],
+                    iconAnchor: [28, 28]
+                });
+
+                userMarker = L.marker(userLatLng, { icon: dotIcon, draggable: true }).addTo(map);
+                userMarker.on('dragend', () => {
+                    if (!userMarker) return;
+                    const pos = userMarker.getLatLng();
+                    userLatLng = [pos.lat, pos.lng];
+                    recalculateCompetitivePrices();
+                });
+
+                setTimeout(() => {
+                    if (map) map.invalidateSize();
+                }, 150);
+            } catch (err) {
+                console.warn(err);
+            }
+        }
+
+        function setMapCenter(latLng, zoom = 16) {
+            try {
+                if (useGoogleMaps && gMap) {
+                    gMap.setCenter({ lat: latLng[0], lng: latLng[1] });
+                    gMap.setZoom(zoom);
+                    if (gUserMarker) gUserMarker.setPosition({ lat: latLng[0], lng: latLng[1] });
+                } else if (map) {
+                    map.setView(latLng, zoom);
+                    if (userMarker) userMarker.setLatLng(latLng);
+                }
+            } catch (err) {
+                console.warn(err);
+            }
+        }
+
+        function requestUserGPSLocation(silent = false) {
+            try {
+                if (!navigator.geolocation) {
+                    setMapCenter(userLatLng, 15);
+                    if (!silent) showToast('تم ضبط الخريطة على موقعك في بنغازي', 'info', 2200);
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        if (pos && pos.coords) {
+                            userLatLng = [pos.coords.latitude, pos.coords.longitude];
+                        }
+                        setMapCenter(userLatLng, 16);
+                        recalculateCompetitivePrices();
+                        if (!silent) showToast('تم تحديث موقعك الحالي عبر GPS');
+                    },
+                    () => {
+                        setMapCenter(userLatLng, 15);
+                        if (!silent) showToast('تم تمركز الخريطة على موقعك في بنغازي', 'info', 2200);
+                    },
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            } catch (_) {
+                setMapCenter(userLatLng, 15);
+            }
+        }
+
+        function focusMapOnActiveTrip() {
+            try {
+                if (useGoogleMaps && gMap && window.google) {
+                    const bounds = new google.maps.LatLngBounds();
+                    bounds.extend({ lat: userLatLng[0], lng: userLatLng[1] });
+                    bounds.extend({ lat: selectedDestLatLng[0], lng: selectedDestLatLng[1] });
+                    gMap.fitBounds(bounds);
+                } else if (map) {
+                    const pts = [userLatLng, selectedDestLatLng];
+                    if (captainMarker) {
+                        const cPos = captainMarker.getLatLng();
+                        pts.push([cPos.lat, cPos.lng]);
+                    }
+                    map.fitBounds(L.latLngBounds(pts), { padding: [70, 140] });
+                }
+            } catch (err) {
+                console.warn(err);
+            }
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return Math.max(1.0, parseFloat((R * c).toFixed(1)));
+        }
+
+        function recalculateCompetitivePrices() {
+            calculatedDistanceKm = calculateDistance(userLatLng[0], userLatLng[1], selectedDestLatLng[0], selectedDestLatLng[1]);
+            const baseRef = 8.0 + (calculatedDistanceKm * 1.9);
+            const saver = Math.max(7.0, Math.round(baseRef - 2.0));
+            const economy = Math.max(8.5, Math.round(baseRef - 1.0));
+            const flex = Math.max(10.0, Math.round(baseRef));
+            flexMinPrice = Math.max(8.0, flex - 3.0);
+
+            tripPrices = {
+                saver,
+                economy,
+                flex: Math.max(flexMinPrice, flex),
+                vip: Math.max(economy + 7.0, Math.round(economy * 1.75))
+            };
+
+            if (selectedTier.name === 'فليكس') {
+                selectedTier.price = tripPrices.flex;
+            } else if (selectedTier.name === 'اقتصادي') {
+                selectedTier.price = tripPrices.saver;
+            } else if (selectedTier.name === 'عادي') {
+                selectedTier.price = tripPrices.economy;
+            } else if (selectedTier.name === 'في آي بي') {
+                selectedTier.price = tripPrices.vip;
+            }
+        }
+
+        function searchBenghaziPlaces(query) {
+            const list = document.getElementById('searchResultsList');
+            const clearBtn = document.getElementById('clearSearchBtn');
+            if (!list) return;
+
+            const q = String(query || '').trim();
+            if (clearBtn) {
+                clearBtn.classList.toggle('hidden', q.length === 0);
+            }
+
+            if (!q) {
+                list.classList.add('hidden');
+                return;
+            }
+
+            let matches = BENGHAZI_PLACES.filter(p => p.name.includes(q) || p.type.includes(q));
+            if (matches.length === 0) {
+                matches = [{ name: q, lat: userLatLng[0] + 0.01, lng: userLatLng[1] + 0.01, type: "بنغازي" }];
+            }
+
+            list.innerHTML = matches.map((m, idx) => `
+                <div data-idx="${idx}" onclick="selectPlace('${m.name.replace(/'/g, "\\'")}', ${m.lat}, ${m.lng})" class="touch-btn p-3.5 hover:bg-blue-50 active:bg-blue-100 text-right">
+                    <div class="font-extrabold text-slate-800 text-sm">📍 ${escapeHtml(m.name)}</div>
+                    <div class="text-[11px] text-slate-500">${escapeHtml(m.type)}</div>
+                </div>
+            `).join('');
+            list.classList.remove('hidden');
+        }
+
+        function clearDestinationInput() {
+            const input = document.getElementById('destinationInput');
+            const list = document.getElementById('searchResultsList');
+            const clearBtn = document.getElementById('clearSearchBtn');
+            if (input) input.value = '';
+            if (list) list.classList.add('hidden');
+            if (clearBtn) clearBtn.classList.add('hidden');
+        }
+
+        function placeDestinationMarker(latLng) {
+            try {
+                if (useGoogleMaps && gMap && window.google) {
+                    if (gDestMarker) gDestMarker.setMap(null);
+                    gDestMarker = new google.maps.Marker({
+                        position: { lat: latLng[0], lng: latLng[1] },
+                        map: gMap
+                    });
+                } else if (map) {
+                    if (destMarker) map.removeLayer(destMarker);
+                    destMarker = L.marker(latLng).addTo(map);
+                }
+            } catch (err) {
+                console.warn(err);
+            }
+        }
+
+        function selectPlace(name, lat, lng) {
+            const input = document.getElementById('destinationInput');
+            const clearBtn = document.getElementById('clearSearchBtn');
+            if (input) input.value = name;
+            if (clearBtn) clearBtn.classList.remove('hidden');
+
+            selectedDestName = name;
+            selectedDestLatLng = [lat, lng];
+            setMapCenter(selectedDestLatLng, 16);
+            placeDestinationMarker(selectedDestLatLng);
+
+            const list = document.getElementById('searchResultsList');
+            if (list) list.classList.add('hidden');
+
+            recalculateCompetitivePrices();
+            setTimeout(() => openTierSelection(), 160);
+        }
+
+        function selectQuickPlace(name, lat, lng) {
+            selectPlace(name, lat, lng);
+        }
+
+        function openTierSelection() {
+            const input = document.getElementById('destinationInput');
+            const val = input ? input.value.trim() : '';
+            if (!val) {
+                showToast('اختر أو اكتب الوجهة أولاً', 'error', 2400);
+                return;
+            }
+            selectedDestName = val;
+            const matched = BENGHAZI_PLACES.find(p => p.name === val);
+            if (matched) {
+                selectedDestLatLng = [matched.lat, matched.lng];
+            }
+            placeDestinationMarker(selectedDestLatLng);
+            recalculateCompetitivePrices();
+
+            const mins = Math.max(3, Math.round(calculatedDistanceKm * 3));
+            const infoEl = document.getElementById('distancePriceInfo');
+            if (infoEl) infoEl.innerText = `إلى ${selectedDestName} • المسافة: ${calculatedDistanceKm} كم (~${mins} دقيقة)`;
+
+            const pEco = document.getElementById('priceEco');
+            const pEconomy = document.getElementById('priceEconomy');
+            const pFlex = document.getElementById('priceFlex');
+            const flexMin = document.getElementById('flexMinLabel');
+            const pVip = document.getElementById('priceVip');
+
+            if (pEco) pEco.innerText = tripPrices.saver.toFixed(2) + " د.ل";
+            if (pEconomy) pEconomy.innerText = tripPrices.economy.toFixed(2) + " د.ل";
+            if (pFlex) pFlex.innerText = tripPrices.flex.toFixed(2) + " د.ل";
+            if (flexMin) flexMin.innerText = `الحد الأدنى: ${flexMinPrice.toFixed(2)} د.ل`;
+            if (pVip) pVip.innerText = tripPrices.vip.toFixed(2) + " د.ل";
+
+            const tierFlexEl = document.getElementById('tierFlex');
+            if (tierFlexEl) selectTier('فليكس', tierFlexEl);
+
+            const modal = document.getElementById('tierModal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeTierModal() {
+            const modal = document.getElementById('tierModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function selectTier(name, el) {
+            document.querySelectorAll('.tier-card').forEach(c => c.classList.remove('selected'));
+            if (el) el.classList.add('selected');
+            let p = tripPrices.flex;
+            if (name === 'اقتصادي') p = tripPrices.saver;
+            if (name === 'عادي') p = tripPrices.economy;
+            if (name === 'في آي بي') p = tripPrices.vip;
+            selectedTier = { name, price: p };
+        }
+
+        function adjustFlexPrice(delta) {
+            const next = tripPrices.flex + delta;
+            if (next < flexMinPrice) {
+                tripPrices.flex = flexMinPrice;
+                showToast(`الحد الأدنى لفليكس هو ${flexMinPrice.toFixed(2)} د.ل`, 'warning', 2200);
+            } else {
+                tripPrices.flex = next;
+            }
+            const pFlex = document.getElementById('priceFlex');
+            if (pFlex) pFlex.innerText = tripPrices.flex.toFixed(2) + " د.ل";
+            if (selectedTier.name === 'فليكس') {
+                selectedTier.price = tripPrices.flex;
+            }
+        }
+
+        function openPickupConfirmAndSearch() {
+            closeTierModal();
+            clearAllActiveTimers();
+            setMapCenter(userLatLng, 16);
+            showToast('تم تأكيد نقطة الانطلاق، جاري البحث عن كابتن...', 'info', 2000);
+
+            const searchModal = document.getElementById('searchingModal');
+            const timerEl = document.getElementById('countdownTimer');
+            if (searchModal) searchModal.classList.remove('hidden');
+
+            let count = 5;
+            if (timerEl) timerEl.innerText = count;
+
+            countdownInterval = setInterval(() => {
+                count--;
+                if (timerEl) timerEl.innerText = Math.max(0, count);
+                if (count <= 0) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    if (searchModal) searchModal.classList.add('hidden');
+                    openPassengerActiveRide();
+                }
+            }, 1000);
+        }
+
+        function cancelSearching() {
+            clearAllActiveTimers();
+            const searchModal = document.getElementById('searchingModal');
+            if (searchModal) searchModal.classList.add('hidden');
+            showToast('تم إلغاء البحث', 'warning', 2400);
+        }
+
+        function openPassengerActiveRide() {
+            const pPanel = document.getElementById('passengerPanel');
+            const pPrice = document.getElementById('passengerPriceDisplay');
+            const activeModal = document.getElementById('passengerActiveRideModal');
+
+            if (pPanel) pPanel.classList.add('hidden');
+            if (pPrice) pPrice.innerText = (selectedTier.price + selectedTip).toFixed(2) + " د.ل";
+            if (activeModal) activeModal.classList.remove('hidden');
+
+            startCaptainVehicleMovement();
+        }
+
+        function startCaptainVehicleMovement() {
+            clearAllActiveTimers();
+            removeCaptainMarker();
+
+            const waypoints = [
+                [userLatLng[0] + 0.008, userLatLng[1] + 0.006],
+                [userLatLng[0] + 0.005, userLatLng[1] + 0.004],
+                [userLatLng[0] + 0.002, userLatLng[1] + 0.0015],
+                [userLatLng[0], userLatLng[1]]
+            ];
+
+            try {
+                if (!useGoogleMaps && map) {
+                    const carIcon = L.divIcon({
+                        className: 'captain-car-icon',
+                        html: '<div style="background:#10b981;color:white;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 4px 10px rgba(0,0,0,0.35);font-size:16px;">🚕</div>',
+                        iconSize: [36, 36],
+                        iconAnchor: [18, 18]
+                    });
+                    captainMarker = L.marker(waypoints[0], { icon: carIcon }).addTo(map);
+                } else if (useGoogleMaps && gMap && window.google) {
+                    gCaptainMarker = new google.maps.Marker({
+                        position: { lat: waypoints[0][0], lng: waypoints[0][1] },
+                        map: gMap,
+                        label: "🚕"
+                    });
+                }
+            } catch (err) {
+                console.warn(err);
+            }
+
+            let idx = 0;
+            updateCarDistanceAndEta(waypoints[0][0], waypoints[0][1], false);
+
+            captainMoveInterval = setInterval(() => {
+                idx++;
+                if (idx >= waypoints.length) {
+                    clearInterval(captainMoveInterval);
+                    captainMoveInterval = null;
+                    updateCarDistanceAndEta(userLatLng[0], userLatLng[1], true);
+                    showToast('وصلت السيارة إلى موقعك');
+                    return;
+                }
+                if (!useGoogleMaps && captainMarker) {
+                    captainMarker.setLatLng(waypoints[idx]);
+                } else if (useGoogleMaps && gCaptainMarker) {
+                    gCaptainMarker.setPosition({ lat: waypoints[idx][0], lng: waypoints[idx][1] });
+                }
+                updateCarDistanceAndEta(waypoints[idx][0], waypoints[idx][1], false);
+            }, 2500);
+        }
+
+        function updateCarDistanceAndEta(lat, lng, arrived) {
+            const el = document.getElementById('captainEtaStatus');
+            if (!el) return;
+            if (arrived) {
+                el.innerText = "السيارة وصلت إلى موقعك الآن";
+                return;
+            }
+            const dist = calculateDistance(lat, lng, userLatLng[0], userLatLng[1]);
+            const mins = Math.max(1, Math.round(dist * 2.5));
+            el.innerText = `السيارة تبعد ${dist.toFixed(1)} كم • تصل خلال ${mins} دقيقة`;
+        }
+
+        // نظام الإلغاء على مرحلتين مع أسباب مختلفة للراكب والسائق
+        function openCancelReasonModal(actor) {
+            cancellingActor = actor;
+            selectedCancelReason = '';
+            const listEl = document.getElementById('cancelReasonsList');
+            const titleEl = document.getElementById('cancelModalTitle');
+            const reasons = actor === 'passenger' ? PASSENGER_CANCEL_REASONS : DRIVER_CANCEL_REASONS;
+
+            if (titleEl) {
+                titleEl.innerText = actor === 'passenger' ? 'لماذا تريد إلغاء الرحلة؟' : 'اختر سبب إلغاء الرحلة (خيارات السائق)';
+            }
+
+            if (listEl) {
+                listEl.innerHTML = reasons.map(r => `
+                    <div onclick="selectCancelReasonItem('${r.replace(/'/g, "\\'")}', this)" class="reason-card p-3.5 rounded-2xl border border-slate-200 transition-all flex items-center justify-between text-right">
+                        <span>${escapeHtml(r)}</span>
+                        <i class="fa-regular fa-circle text-slate-400"></i>
+                    </div>
+                `).join('');
+            }
+
+            const modal = document.getElementById('cancelReasonModal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function selectCancelReasonItem(reason, el) {
+            selectedCancelReason = reason;
+            document.querySelectorAll('.reason-card').forEach(c => {
+                c.classList.remove('selected');
+                const icon = c.querySelector('i');
+                if (icon) icon.className = 'fa-regular fa-circle text-slate-400';
+            });
+            if (el) {
+                el.classList.add('selected');
+                const activeIcon = el.querySelector('i');
+                if (activeIcon) activeIcon.className = 'fa-solid fa-circle-check text-red-600';
+            }
+        }
+
+        function closeCancelReasonModal() {
+            const modal = document.getElementById('cancelReasonModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function proceedToCancelConfirm() {
+            if (!selectedCancelReason) {
+                showToast('الرجاء اختيار سبب الإلغاء أولاً', 'error', 2400);
+                return;
+            }
+            closeCancelReasonModal();
+            const warnEl = document.getElementById('cancelConfirmWarningText');
+            if (warnEl) {
+                if (cancellingActor === 'passenger') {
+                    warnEl.innerText = 'هل تريد تأكيد إلغاء الرحلة؟ تنبيه: كثرة إلغاء الرحلات قد يؤثر على حسابك.';
+                } else {
+                    warnEl.innerText = 'هل تريد تأكيد إلغاء الرحلة؟ تحذير: كثرة إلغاء الرحلات قد يؤدي إلى قفل حسابك لمدة 5 أيام أو 10 أيام، أو قد يؤدي إلى إيقاف حسابك.';
+                }
+            }
+            const doubleModal = document.getElementById('cancelDoubleConfirmModal');
+            if (doubleModal) doubleModal.classList.remove('hidden');
+        }
+
+        function closeDoubleConfirmModal() {
+            const doubleModal = document.getElementById('cancelDoubleConfirmModal');
+            if (doubleModal) doubleModal.classList.add('hidden');
+        }
+
+        function executeFinalCancellation() {
+            closeDoubleConfirmModal();
+            clearAllActiveTimers();
+            removeCaptainMarker();
+
+            if (cancellingActor === 'passenger') {
+                const activeRide = document.getElementById('passengerActiveRideModal');
+                const pPanel = document.getElementById('passengerPanel');
+                if (activeRide) activeRide.classList.add('hidden');
+                if (pPanel) pPanel.classList.remove('hidden');
+                showToast('تنبيه: كثرة إلغاء الرحلات قد يؤثر على حسابك.', 'warning', 5500);
+            } else {
+                const dJourney = document.getElementById('driverJourneyModal');
+                const dWait = document.getElementById('driverWaitingPanel');
+                if (dJourney) dJourney.classList.add('hidden');
+                if (dWait) dWait.classList.remove('hidden');
+                showToast('تحذير: كثرة إلغاء الرحلات قد يؤدي إلى قفل حسابك لمدة 5 أيام أو 10 أيام، أو قد يؤدي إلى إيقاف حسابك.', 'error', 6500);
+            }
+        }
+
+        // التقييم بالنجوم
+        function setStarRating(groupId, count) {
+            const container = document.getElementById(groupId);
+            if (!container) return;
+            const stars = container.querySelectorAll('i');
+            stars.forEach((star, index) => {
+                if (index < count) {
+                    star.className = 'touch-btn fa-solid fa-star p-1 text-amber-400';
+                } else {
+                    star.className = 'touch-btn fa-regular fa-star p-1 text-slate-300';
+                }
+            });
+        }
+
+        function setTip(amount, el) {
+            selectedTip = amount;
+            const parent = document.getElementById('tipButtonsGroup');
+            if (parent) {
+                parent.querySelectorAll('button').forEach(b => {
+                    b.className = "bg-slate-100 border border-slate-200 py-2 rounded-xl font-bold";
+                });
+            }
+            if (el) {
+                el.className = "bg-blue-50 border-2 border-blue-600 text-blue-700 py-2 rounded-xl font-bold";
+            }
+            const total = selectedTier.price + selectedTip;
+            const summary = document.getElementById('passengerTripSummaryText');
+            if (summary) summary.innerText = `المبلغ الإجمالي للكابتن نقداً: ${total.toFixed(2)} د.ل`;
+        }
+
+        function openPassengerFinishModal() {
+            clearAllActiveTimers();
+            const total = selectedTier.price + selectedTip;
+            const summary = document.getElementById('passengerTripSummaryText');
+            if (summary) summary.innerText = `المبلغ الإجمالي للكابتن نقداً: ${total.toFixed(2)} د.ل`;
+            const modal = document.getElementById('passengerRatingModal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function submitPassengerRatingAndClose() {
+            removeCaptainMarker();
+            completedTripsCount += 1;
+            completedDistanceKm = Math.round(completedDistanceKm + calculatedDistanceKm);
+            updateStatsDisplay();
+
+            const ratingModal = document.getElementById('passengerRatingModal');
+            const activeRide = document.getElementById('passengerActiveRideModal');
+            const pPanel = document.getElementById('passengerPanel');
+            if (ratingModal) ratingModal.classList.add('hidden');
+            if (activeRide) activeRide.classList.add('hidden');
+            if (pPanel) pPanel.classList.remove('hidden');
+
+            clearDestinationInput();
+            selectedTip = 0;
+            showToast('تم إرسال تقييمك بنجاح');
+        }
+
+        // رحلة السائق على مرحلتين + فتح Google Maps
+        function openDriverJourney() {
+            driverJourneyStep = 1;
+            const dWait = document.getElementById('driverWaitingPanel');
+            const priceTag = document.getElementById('driverJourneyPriceTag');
+            const stageBadge = document.getElementById('driverStageBadge');
+            const stageLoc = document.getElementById('driverStageLocationText');
+            const stageHint = document.getElementById('driverStageHint');
+            const actionBtn = document.getElementById('driverJourneyActionBtn');
+            const modal = document.getElementById('driverJourneyModal');
+
+            if (dWait) dWait.classList.add('hidden');
+            if (priceTag) priceTag.innerText = selectedTier.price.toFixed(2) + " د.ل";
+            if (stageBadge) stageBadge.innerText = "المرحلة 1 من 2: التوجه لموقع الراكب";
+            if (stageLoc) stageLoc.innerText = "📍 موقع الراكب: الفويهات، بنغازي";
+            if (stageHint) stageHint.innerText = "اضغط على (خرائط) لفتح موقع الراكب في Google Maps";
+            if (actionBtn) {
+                actionBtn.innerText = "تم الوصول إلى مكان الراكب";
+                actionBtn.className = "w-full bg-slate-900 text-white py-3.5 rounded-xl font-extrabold text-sm shadow hover:bg-slate-800 active:scale-95 transition-all";
+            }
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function openGoogleMapsForCurrentStage() {
+            const target = driverJourneyStep === 1 ? userLatLng : selectedDestLatLng;
+            const label = driverJourneyStep === 1 ? "موقع الراكب" : selectedDestName;
+            const url = `https://www.google.com/maps/dir/?api=1&destination=${target[0]},${target[1]}&travelmode=driving`;
+            showToast(`جاري فتح ${label} في خرائط جوجل...`, 'info', 2500);
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+
+        function advanceDriverJourneyStep() {
+            if (driverJourneyStep === 1) {
+                driverJourneyStep = 2;
+                const stageBadge = document.getElementById('driverStageBadge');
+                const stageLoc = document.getElementById('driverStageLocationText');
+                const stageHint = document.getElementById('driverStageHint');
+                const actionBtn = document.getElementById('driverJourneyActionBtn');
+
+                if (stageBadge) stageBadge.innerText = "المرحلة 2 من 2: التوجه إلى وجهة الراكب";
+                if (stageLoc) stageLoc.innerText = `🏁 وجهة الراكب: ${selectedDestName}`;
+                if (stageHint) stageHint.innerText = "اضغط على (خرائط) لفتح وجهة الراكب في Google Maps";
+                if (actionBtn) {
+                    actionBtn.innerText = "إنهاء الرحلة";
+                    actionBtn.className = "w-full bg-emerald-600 text-white py-3.5 rounded-xl font-extrabold text-sm shadow hover:bg-emerald-700 active:scale-95 transition-all";
+                }
+                showToast('تم الوصول لمكان الراكب، الآن توجه إلى الوجهة');
+            } else {
+                const modal = document.getElementById('driverJourneyModal');
+                const dWait = document.getElementById('driverWaitingPanel');
+                const ratingModal = document.getElementById('driverRatingModal');
+
+                if (modal) modal.classList.add('hidden');
+                if (dWait) dWait.classList.remove('hidden');
+
+                const commission = selectedTier.price * 0.13;
+                walletBalance = parseFloat((walletBalance - commission).toFixed(2));
+                completedTripsCount += 1;
+                completedDistanceKm = Math.round(completedDistanceKm + calculatedDistanceKm);
+                updateStatsDisplay();
+
+                if (ratingModal) ratingModal.classList.remove('hidden');
+            }
+        }
+
+        function submitDriverRatingAndClose() {
+            const ratingModal = document.getElementById('driverRatingModal');
+            if (ratingModal) ratingModal.classList.add('hidden');
+            showToast('تم حفظ تقييم الراكب بنجاح');
+        }
+
+        function boostDriverPriority() {
+            priorityPassengersCount = 10;
+            const badge = document.getElementById('priorityBadgeText');
+            if (badge) badge.innerText = `الأولوية ${priorityPassengersCount}/10`;
+            showToast('تم تفعيل الأولوية 10/10 للسائق');
+        }
+
+        function toggleSidebar(open) {
+            const sb = document.getElementById('sidebar');
+            const ov = document.getElementById('sidebarOverlay');
+            const bal = document.getElementById('sidebarWalletBalance');
+            if (!sb || !ov) return;
+
+            if (open) {
+                sb.classList.remove('translate-x-full');
+                ov.classList.remove('hidden');
+                if (bal) bal.innerText = walletBalance.toFixed(2) + " د.ل";
+            } else {
+                sb.classList.add('translate-x-full');
+                ov.classList.add('hidden');
+            }
+        }
+
+        function switchAppRole() {
+            clearAllActiveTimers();
+            removeCaptainMarker();
+            currentRole = currentRole === 'passenger' ? 'driver' : 'passenger';
+            toggleSidebar(false);
+            updateRoleUI();
+            showToast(currentRole === 'driver' ? 'تم التبديل إلى وضع السائق' : 'تم التبديل إلى وضع الراكب');
+        }
+
+        function updateRoleUI() {
+            const idsToHide = [
+                'passengerActiveRideModal',
+                'driverJourneyModal',
+                'searchingModal',
+                'tierModal',
+                'driverIncomingModal',
+                'cancelReasonModal',
+                'cancelDoubleConfirmModal'
+            ];
+            idsToHide.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+
+            const pPanel = document.getElementById('passengerPanel');
+            const dPanel = document.getElementById('driverWaitingPanel');
+            const dStatus = document.getElementById('driverStatusContainer');
+            const pBadge = document.getElementById('passengerTopBadge');
+            const badge = document.getElementById('sidebarRoleBadge');
+            const swText = document.getElementById('switchRoleText');
+
+            if (currentRole === 'driver') {
+                if (pPanel) pPanel.classList.add('hidden');
+                if (dPanel) dPanel.classList.remove('hidden');
+                if (dStatus) dStatus.classList.remove('hidden');
+                if (pBadge) pBadge.classList.add('hidden');
+                if (badge) badge.innerText = "وضع السائق الحالي";
+                if (swText) swText.innerText = "التبديل إلى وضع الراكب";
+            } else {
+                if (pPanel) pPanel.classList.remove('hidden');
+                if (dPanel) dPanel.classList.add('hidden');
+                if (dStatus) dStatus.classList.add('hidden');
+                if (pBadge) pBadge.classList.remove('hidden');
+                if (badge) badge.innerText = "وضع الراكب الحالي";
+                if (swText) swText.innerText = "التبديل إلى وضع السائق";
+            }
+        }
+
+        function toggleDriverOnlineStatus() {
+            isDriverOnline = !isDriverOnline;
+            const btn = document.getElementById('driverPowerBtn');
+            const txt = document.getElementById('driverStatusText');
+            if (isDriverOnline) {
+                if (btn) btn.className = "w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-sm active:scale-95";
+                if (txt) {
+                    txt.innerText = "متصل الآن";
+                    txt.className = "text-xs font-extrabold text-emerald-600";
+                }
+                showToast('أنت متصل الآن');
+            } else {
+                if (btn) btn.className = "w-9 h-9 rounded-xl bg-red-500 text-white flex items-center justify-center shadow-sm active:scale-95";
+                if (txt) {
+                    txt.innerText = "غير متصل";
+                    txt.className = "text-xs font-extrabold text-red-600";
+                }
+                showToast('أنت غير متصل', 'error');
+            }
+        }
+
+        function simulateIncomingRequest() {
+            if (!isDriverOnline) {
+                showToast('فعّل الاتصال أولاً', 'error');
+                return;
+            }
+            const priceTag = document.getElementById('incomingPriceTag');
+            const destText = document.getElementById('incomingDestText');
+            const modal = document.getElementById('driverIncomingModal');
+
+            if (priceTag) priceTag.innerText = selectedTier.price.toFixed(2) + " د.ل";
+            if (destText) destText.innerHTML = `🏁 <b>الوجهة:</b> ${escapeHtml(selectedDestName)}`;
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function acceptIncomingRide() {
+            const modal = document.getElementById('driverIncomingModal');
+            if (modal) modal.classList.add('hidden');
+            openDriverJourney();
+        }
+
+        function rejectIncomingRide() {
+            const modal = document.getElementById('driverIncomingModal');
+            if (modal) modal.classList.add('hidden');
+            showToast('تم رفض الطلب', 'warning', 2200);
+        }
+
+        function openChatModal() {
+            const modal = document.getElementById('chatModal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeChatModal() {
+            const modal = document.getElementById('chatModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const container = document.getElementById('chatMessages');
+            if (!input || !container) return;
+
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            container.innerHTML += `<div class="bg-blue-600 text-white p-3 rounded-2xl shadow-sm max-w-[80%] ml-auto text-right">${escapeHtml(msg)}</div>`;
+            input.value = '';
+            container.scrollTop = container.scrollHeight;
+
+            setTimeout(() => {
+                if (!container) return;
+                container.innerHTML += `<div class="bg-white p-3 rounded-2xl shadow-sm max-w-[80%] text-slate-800 text-right border border-slate-100">تم الاستلام، نحن في الخدمة في بنغازي.</div>`;
+                container.scrollTop = container.scrollHeight;
+            }, 700);
+        }
+
+        function openWalletModal() {
+            toggleSidebar(false);
+            const disp = document.getElementById('walletDisplayAmount');
+            const modal = document.getElementById('walletModal');
+            if (disp) disp.innerText = walletBalance.toFixed(2) + " د.ل";
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeWalletModal() {
+            const modal = document.getElementById('walletModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function rechargeWallet() {
+            const input = document.getElementById('scratchCardInput');
+            if (!input || !input.value.trim()) {
+                showToast('أدخل رقم كرت الشحن أولاً', 'error', 2200);
+                return;
+            }
+            walletBalance = parseFloat((walletBalance + 20.00).toFixed(2));
+            const disp = document.getElementById('walletDisplayAmount');
+            const sideBal = document.getElementById('sidebarWalletBalance');
+            if (disp) disp.innerText = walletBalance.toFixed(2) + " د.ل";
+            if (sideBal) sideBal.innerText = walletBalance.toFixed(2) + " د.ل";
+            input.value = '';
+            closeWalletModal();
+            showToast('تم شحن 20.00 د.ل بنجاح');
+        }
+
+        function updateStatsDisplay() {
+            const tripsEl = document.getElementById('statsTotalTrips');
+            const kmEl = document.getElementById('statsTotalKm');
+            if (tripsEl) tripsEl.innerText = `${completedTripsCount} رحلة`;
+            if (kmEl) kmEl.innerText = `${completedDistanceKm} كم`;
+        }
+
+        function openStatsModal() {
+            toggleSidebar(false);
+            updateStatsDisplay();
+            const modal = document.getElementById('statsModal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeStatsModal() {
+            const modal = document.getElementById('statsModal');
+            if (modal) modal.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
