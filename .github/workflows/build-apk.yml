@@ -27,7 +27,46 @@ mkdir -p app/src/main/assets
 ​if [ -f index.html ]; then
 cp index.html app/src/main/assets/index.html
 else
-printf '<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px"><h1>Benghazi Delivery</h1><p>APK built successfully.</p></body></html>\n' > app/src/main/assets/index.html
+cat << 'HTML_EOF' > app/src/main/assets/index.html
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>بنغازي للتوصيل</title>
+<style>
+body {
+font-family: sans-serif;
+background: #111827;
+color: #f9fafb;
+display: flex;
+align-items: center;
+justify-content: center;
+min-height: 100vh;
+margin: 0;
+text-align: center;
+}
+.card {
+background: #1f2937;
+padding: 2rem;
+border-radius: 16px;
+box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+max-width: 360px;
+}
+h1 {
+margin-top: 0;
+color: #34d399;
+}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>بنغازي للتوصيل</h1>
+<p>تم بناء التطبيق بنجاح عبر GitHub Actions.</p>
+</div>
+</body>
+</html>
+HTML_EOF
 fi
 ​cat << 'EOF' > settings.gradle
 rootProject.name = "BenghaziDeliveryApp"
