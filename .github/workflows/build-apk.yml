@@ -16,6 +16,10 @@ distribution: temurin
 java-version: '17'
 ​- name: Set up Android SDK
 uses: android-actions/setup-android@v3
+​- name: Set up Gradle
+uses: gradle/actions/setup-gradle@v4
+with:
+gradle-version: '8.4'
 ​- name: Create Android WebView project
 run: |
 mkdir -p app/src/main/java/com/example/benghaziapp
@@ -161,9 +165,8 @@ android:exported="true">
 </application>
 </manifest>
 EOF
-​gradle wrapper --gradle-version 8.4 --distribution-type bin
 ​- name: Build APK
-run: ./gradlew assembleDebug
+run: gradle assembleDebug
 ​- name: Upload APK artifact
 uses: actions/upload-artifact@v4
 with:
